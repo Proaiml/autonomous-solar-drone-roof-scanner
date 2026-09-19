@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Training dataset (large binary folder ~1.2GB)
+Detect_solar_dust/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Inspection test runs / logs
+outputs/
+runs/
+*.log
+
+# OS generated files
+Thumbs.db
+Desktop.ini
