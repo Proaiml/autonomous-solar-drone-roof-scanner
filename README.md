@@ -6,21 +6,23 @@
 [![DJI WPML](https://img.shields.io/badge/DJI-Pilot%202%20WPML-green.svg)](https://developer.dji.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-An end-to-end, production-ready system for autonomous rooftop solar panel inspection using commercial drones. Integrates geodetic boustrophedon grid path planning, universal autopilot communication (MAVLink, DJI Pilot 2 WPML/KML, QGroundControl, Mission Planner), and a deep learning PyTorch ResNet-18 model (`resnet18_solar_dust.pth`) for real-time solar panel dust and contamination detection.
+An end-to-end system for autonomous rooftop solar panel inspection using commercial drones. Integrates geodetic boustrophedon grid path planning, universal autopilot communication (MAVLink, DJI Pilot 2 WPML/KML, QGroundControl, Mission Planner), and a deep learning PyTorch ResNet-18 model (`resnet18_solar_dust.pth`) for real-time solar panel dust and contamination detection.
+
+> **Status:** the planner, exporters, MAVLink link and a full simulated mission are covered by 14 automated tests. Real flights, mission import on DJI controllers and the model's field accuracy have not been validated yet — see [Validation status and limits](#validation-status-and-limits).
 
 ---
 
 ## Key Features
 
-1. **Universal Commercial Drone Compatibility**:
-   - **MAVLink Protocol**: Direct support for ArduPilot, PX4, Pixhawk, Cube, Holybro, Herelink, SiYi, Skydroid via USB Serial (`COMx`, `/dev/ttyUSB0`), UDP (`14550`), or TCP.
-   - **DJI Pilot 2 (WPML / KML 2.2)**: Generates native mission files for DJI Matrice 300/350 RTK, Mavic 3 Enterprise, Mavic 3 Thermal, and Matrice 30.
+1. **Broad Drone Compatibility (by protocol)**:
+   - **MAVLink Protocol**: Works with MAVLink autopilots (ArduPilot, PX4 on Pixhawk, Cube, Holybro boards) and MAVLink radio links (e.g. Herelink, SiYi, Skydroid) via USB Serial (`COMx`, `/dev/ttyUSB0`), UDP (`14550`), or TCP. Individual hardware models have not been tested one by one.
+   - **DJI Pilot 2 (WPML / KML 2.2)**: Generates a KML mission with WPML waypoint tags intended for DJI Matrice 300/350 RTK, Mavic 3 Enterprise/Thermal and Matrice 30. DJI Pilot 2 imports KMZ packages (`wpmz/template.kml` + `waylines.wpml`); packaging and import on a real controller are not yet verified.
    - **QGroundControl / Mission Planner (`.plan` / `.waypoints`)**: Native JSON and WPL 110 format export.
    - **GIS GeoJSON**: Standard RFC 7946 feature collections for QGIS, ArcGIS, and Leaflet.
    - **High-Fidelity Flight Simulator**: Built-in kinematic simulator for hardware-free end-to-end testing.
 
 2. **Autonomous Rooftop Path Planner**:
-   - Computes optimal boustrophedon (lawnmower) survey tracks from GPS roof boundary polygons.
+   - Computes boustrophedon (lawnmower) survey tracks from GPS roof boundary polygons.
    - Exact local ENU (East-North-Up) metric tangent plane projection via WGS84 ellipsoid geodetics.
    - Automatic solar panel row alignment (azimuth orientation) to minimize flight turns and maximize coverage.
    - Inward safety setback buffering and obstacle margins.
@@ -28,7 +30,7 @@ An end-to-end, production-ready system for autonomous rooftop solar panel inspec
 
 3. **Deep Learning Solar Panel Dust Detector**:
    - PyTorch ResNet-18 architecture with custom MLP classification head.
-   - Binary classification: `Clean` vs `Dusty` with calibrated softmax confidence scores.
+   - Binary classification: `Clean` vs `Dusty` with softmax confidence scores.
    - Real-time video ingestion from RTSP (DJI Livestream / SiYi / Herelink), USB/HDMI capture cards, or local feeds.
    - Geotagging engine syncing every camera trigger with instantaneous drone latitude, longitude, altitude, and heading.
 
@@ -163,9 +165,23 @@ drone.start_mission()
 
 ---
 
+## Training the Dust Model
+
+`main.py` trains the classifier that `resnet18_solar_dust.pth` comes from:
+
+- Data: an `ImageFolder` directory with one sub-folder per class (`Clean`, `Dusty`); set the dataset and output paths at the top and bottom of `main.py`.
+- Split: random 80% train / 20% test.
+- Model: ImageNet-pretrained ResNet-18 with frozen backbone; only the new head (512 → 50 → 20 → 10 → 2, ReLU and Dropout 0.3) is trained.
+- Training: Adam (lr 1e-3, weight decay 1e-4), batch 64, 20 epochs, cross-entropy; inputs resized to 224×224 with ImageNet normalization.
+- The script plots train and test loss. It does not report accuracy; measure precision/recall on a held-out set before trusting the detector in the field.
+
+```bash
+python main.py
+```
+
 ## Verification & Test Suite
 
-The codebase includes an automated test suite covering geodetic math, ResNet-18 model weights, mission exporters, MAVLink packet exchange, and full end-to-end simulation.
+The codebase includes an automated test suite (14 tests, about 20 s on a CPU) covering geodetic math, ResNet-18 model weights, mission exporters, MAVLink packet exchange, and full end-to-end simulation.
 
 To run tests:
 ```bash
@@ -180,6 +196,19 @@ Test coverage:
 - `test_end_to_end_mission.py`: Full mission integration test validating waypoint navigation, frame acquisition, snapshot generation, and HTML map output.
 
 ---
+
+## Validation status and limits
+
+| Area | Status |
+|---|---|
+| Survey geometry (WGS84/ENU, footprint, sweep lines, setback) | Automated tests |
+| QGC `.plan`, MAVLink WPL 110, GeoJSON export | Schema tests |
+| DJI WPML/KML export | XML is generated and checked; KMZ packaging and import on a DJI controller not verified |
+| MAVLink link | Heartbeat and telemetry exchange tested with `pymavlink`; no flight on real hardware yet |
+| Full mission | End-to-end test in the built-in simulator (navigation, frame capture, snapshots, HTML map) |
+| Dust model | Loads and classifies the six sample images; training data and accuracy on an independent test set are not documented |
+
+Before a real flight: check the exported mission in the ground station, fly the first mission in an open area with a pilot ready to take over, and confirm local drone regulations. The detector's output should be reviewed by a person until its accuracy has been measured on images from your own site and camera.
 
 ## License
 MIT License. Developed by İlhan Koçaslan.
